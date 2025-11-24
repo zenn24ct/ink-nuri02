@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ink Rush — カラーマッチモード</title>
+<style>
+/* -------------------------
+   レイアウト
+   ------------------------- */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  display:flex; align-items:center; justify-content:center;
+  background: linear-gradient(180deg,#061022,#03101a);
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,"ヒラギノ角ゴ ProN";
+  color:#fff; padding:24px;
+}
+
+/* コンテナ */
+.container{
+  width:min(980px,96vw);
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.14));
+  padding:12px; border-radius:12px; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  display:flex; gap:12px; align-items:flex-start;
+}
+
+/* 左側：グリッド（ゲーム領域） */
+.grid-wrap{ position:relative; }
+.grid{
+  width:680px; max-width:60vw; aspect-ratio: 4/3;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.02), rgba(255,255,255,0.02) 1px, transparent 1px, transparent 50px);
+  border-radius:8px; position:relative; overflow:hidden;
+  display:grid; grid-template-columns: repeat(var(--cols), 1fr); grid-auto-rows: 1fr;
+}
+
+/* マス */
+.cell{
+  border:1px solid rgba(255,255,255,0.03);
+  background: rgba(255,255,255,0.02);
+  transition: background 160ms ease, transform 140ms ease, box-shadow 120ms ease;
+  cursor:pointer;
+  position:relative;
+}
+/* 塗られたスタイル */
+.cell.filled{ transform: scale(0.985); }
+
+/* ターゲットヒント（薄く表示） */
+.cell::after{
+  content:'';
+  position:absolute; inset:6px;
+  border-radius:6px;
+  opacity:0.14; pointer-events:none;
+  transition:opacity 200ms ease;
+}
+/* ヒントを非表示にする親クラスで制御 */
+.grid.no-hint .cell::after{ opacity:0; }
+
+/* 右側：HUD */
+.panel{
+  width:260px; min-width:220px; display:flex; flex-direction:column; gap:10px;
+  padding:8px;
+}
+.controls button{
+  background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.06);
+  color:#fff; padding:8px 10px; border-radius:8px; cursor:pointer;
+}
+.palette{ display:flex; gap:8px; flex-wrap:wrap; padding:6px 0; }
+.swatch{
+  width:36px; height:36px; border-radius:8px; border:2px solid rgba(255,255,255,0.06); cursor:pointer;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+}
+.swatch.selected{ outline:3px solid rgba(255,255,255,0.12); transform:translateY(-3px); }
+
+/* 選択中の色表示 */
+.current-color{
+  width:100%; height:40px; border-radius:8px; margin-top:6px; display:flex; align-items:center; gap:8px;
+  padding:8px; border:1px solid rgba(255,255,255,0.04);
+}
+.color-box{ width:36px; height:36px; border-radius:6px; border:1px solid rgba(0,0,0,0.2); }
+
+/* HUD テキスト */
+.hud-row{ font-size:13px; opacity:0.95; }
+
+/* 小さなフラッシュ（正解/間違い） */
+.flash{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  pointer-events:none; font-weight:700; font-size:20px; color:#fff;
+  text-shadow:0 4px 18px rgba(0,0,0,0.6); opacity:0; transition:opacity 220ms ease;
+}
+.flash.show{ opacity:1; }
+
+/* フッターヒント */
+.hint{ font-size:13px; opacity:0.85 }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="grid-wrap">
+      <div class="grid" id="grid" style="--cols:10"></div>
+      <div class="flash" id="flash"></div>
+    </div>
+
+    <div class="panel">
+      <div style="font-weight:700; font-size:18px">Ink Rush — Color Match</div>
+      <div class="hud-row">Mode: <span id="mode">Pick color → Fill target</span></div>
+      <div class="hud-row">Targets left: <span id="targetsLeft">0</span>/<span id="total">100</span></div>
+      <div class="hud-row">Score: <span id="score">0</span>  Combo: <span id="combo">1</span></div>
+      <div class="hud-row">Time: <span id="timer">60</span>s</div>
+
+      <div style="margin-top:8px; font-weight:600">Palette</div>
+      <div class="palette" id="palette"></div>
+
+      <div class="current-color" id="currentColorRow">
+        <div class="color-box" id="selectedColorBox"></div>
+        <div style="font-size:13px">Selected color</div>
+      </div>
+
+      <div style="margin-top:8px;">
+        <div class="controls">
+          <button id="startBtn">Start</button>
+          <button id="clearBtn">Clear</button>
+          <button id="toggleHint">Hide Hints</button>
+        </div>
+      </div>
+
+      <div style="margin-top:8px" class="hint">指定色のセルだけを選択した色で塗る。間違えると-2秒になる。</div>
+    </div>
+  </div>
+
+<script>
+/*
+  カラーマッチ版 Ink Rush
+  - パレットから色を選択して、セルを塗る
+  - 各セルには"ターゲット色"が割り当てられる（ヒント表示は薄め）
+  - 正しい色で塗ると得点・コンボ、間違えるとペナルティ（時間マイナス）
+  - スタートでタイマーが動く
+*/
+
+// --- 設定 ---
+const COLS = 10;
+const ROWS = 10;
+const TOTAL = COLS * ROWS;
+const GAME_TIME = 60; // 秒
+
+// スコア周り
+let score = 0;
+let combo = 1;
+let lastCorrectAt = 0;
+const COMBO_WINDOW = 1500; // ミリ秒
+const BASE_SCORE = 20;
+const WRONG_PENALTY_SECONDS = 2; // 間違いで減る時間
+
+// カラーパレット（好みで増やしてOK）
+const PALETTE = [
+  'hsl(10 85% 60%)',   // 赤
+  'hsl(30 90% 55%)',   // 橙
+  'hsl(50 90% 55%)',   // 黄
+  'hsl(140 70% 45%)',  // 緑
+  'hsl(200 85% 55%)',  // 青
+  'hsl(260 80% 60%)',  // 紫
+  'hsl(330 75% 60%)',  // マゼンタ
+  'hsl(190 65% 50%)'   // シアン
+];
+
+// --- DOM ---
+const grid = document.getElementById('grid');
+const startBtn = document.getElementById('startBtn');
+const clearBtn = document.getElementById('clearBtn');
+const toggleHint = document.getElementById('toggleHint');
+const targetsLeftEl = document.getElementById('targetsLeft');
+const totalEl = document.getElementById('total');
+const timerEl = document.getElementById('timer');
+const modeEl = document.getElementById('mode');
+const paletteEl = document.getElementById('palette');
+const selectedColorBox = document.getElementById('selectedColorBox');
+const scoreEl = document.getElementById('score');
+const comboEl = document.getElementById('combo');
+const flashEl = document.getElementById('flash');
+
+totalEl.textContent = TOTAL;
+grid.style.setProperty('--cols', COLS);
+
+let cells = [];
+let filled = 0;
+let running = false;
+let timeLeft = GAME_TIME;
+let timer = null;
+let pointerDown = false;
+
+// game-specific
+let selectedColor = PALETTE[0];
+let targetMap = []; // 各セルのターゲット色（配列長 TOTAL）
+let remainingTargets = TOTAL;
+
+// --- ユーティリティ ---
+function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+
+// 格好良く短い表示用（hslをそのまま使う）
+function pickRandomTarget(){
+  return PALETTE[randInt(0, PALETTE.length-1)];
+}
+
+// --- グリッド作成（ターゲット割当も行う） ---
+function createGrid(){
+  grid.innerHTML = '';
+  cells = [];
+  targetMap = [];
+  for(let i=0;i<TOTAL;i++){
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.filled = '0';
+    cell.dataset.index = i;
+    grid.appendChild(cell);
+    cells.push(cell);
+
+    // ターゲット色を割り当て
+    const tcol = pickRandomTarget();
+    targetMap.push(tcol);
+    // target ヒントは ::after に渡す（DOM style）
+    cell.style.setProperty('--target', tcol);
+    cell.style.setProperty('--targetRGBA', tcol); // 利便性
+
+    // ここで ::after を直接 setProperty で使えるように background を入れる
+    // （実際の見た目はCSSの .cell::after で opacity 操作してる）
+    cell.style.setProperty('--after-bg', tcol);
+
+    // attach pointer events
+    cell.addEventListener('pointerdown', (e) => {
+      pointerDown = true;
+      handleFill(cell);
+    });
+    cell.addEventListener('pointerover', (e) => {
+      if(pointerDown) handleFill(cell);
+    });
+    window.addEventListener('pointerup', ()=> pointerDown = false);
+  }
+
+  // 初回：CSS変数を使ってヒント色を反映（各 cell の ::after に inline style を出す代替）
+  // ここでは直接背景 via pseudo を使えないため、手っ取り早く内側要素を追加して薄いヒントを表示
+  cells.forEach((cell, idx) => {
+    // remove old hint if any
+    const existing = cell.querySelector('.hint-dot');
+    if(existing) existing.remove();
+    const hint = document.createElement('div');
+    hint.className = 'hint-dot';
+    hint.style.position = 'absolute';
+    hint.style.inset = '6px';
+    hint.style.borderRadius = '6px';
+    hint.style.background = targetMap[idx];
+    hint.style.opacity = '0.16';
+    hint.style.pointerEvents = 'none';
+    cell.appendChild(hint);
+  });
+
+  filled = 0;
+  remainingTargets = TOTAL;
+  targetsLeftEl.textContent = remainingTargets;
+  updateHUD();
+}
+
+// --- 塗る処理（ユーザーが選んだ色で塗る） ---
+function handleFill(cell){
+  if(cell.dataset.filled === '1') return;
+  if(!running) return; // ゲームが始まっていないと塗れない
+  const idx = Number(cell.dataset.index);
+  const targetColor = targetMap[idx];
+  // 比較は文字列の完全一致（PALETTE の色文字列をそのまま使っているため一致する）
+  const correct = (normalizeColor(selectedColor) === normalizeColor(targetColor));
+
+  // 実際に塗る見た目
+  cell.dataset.filled = '1';
+  cell.classList.add('filled');
+  cell.style.background = selectedColor;
+  // remove hint dot visually
+  const hint = cell.querySelector('.hint-dot');
+  if(hint) hint.style.opacity = '0';
+
+  if(correct){
+    onCorrectFill();
+    showFlash('+', '+'+calcGain());
+  } else {
+    onWrongFill();
+    showFlash('-', '-'+WRONG_PENALTY_SECONDS);
+  }
+
+  filled++;
+  remainingTargets--;
+  targetsLeftEl.textContent = remainingTargets;
+  updateHUD();
+  checkWin();
+}
+
+function normalizeColor(str){
+  // PALETTE uses "hsl(...)" format; normalize by removing spaces inside parentheses
+  return str.replace(/\s+/g,'').toLowerCase();
+}
+
+function calcGain(){
+  // combo-based gain
+  return Math.floor(BASE_SCORE * combo);
+}
+
+function onCorrectFill(){
+  const now = Date.now();
+  if(now - lastCorrectAt <= COMBO_WINDOW){
+    combo++;
+  } else {
+    combo = 1;
+  }
+  lastCorrectAt = now;
+  score += calcGain();
+}
+
+function onWrongFill(){
+  // ペナルティ：時間を減らす、コンボをリセット、スコアを小減
+  timeLeft = Math.max(0, timeLeft - WRONG_PENALTY_SECONDS);
+  combo = 1;
+  score = Math.max(0, score - Math.floor(BASE_SCORE/2));
+}
+
+// --- HUD 更新 ---
+function updateHUD(){
+  scoreEl.textContent = score;
+  comboEl.textContent = combo;
+  timerEl.textContent = timeLeft;
+  modeEl.textContent = `Selected: ${selectedColor}`;
+  // update selected color box
+  selectedColorBox.style.background = selectedColor;
+}
+
+// --- ゲーム開始・停止・クリア ---
+function startGame(){
+  if(running) return;
+  running = true;
+  timeLeft = GAME_TIME;
+  timerEl.textContent = timeLeft;
+  startBtn.textContent = 'Running...';
+  clearInterval(timer);
+  timer = setInterval(()=>{
+    timeLeft--;
+    timerEl.textContent = timeLeft;
+    if(timeLeft <= 0){ endGame(false); }
+  },1000);
+}
+
+function endGame(win){
+  running = false;
+  clearInterval(timer);
+  startBtn.textContent = 'Start';
+  if(win){
+    setTimeout(()=> alert(`クリア！スコア: ${score}`), 80);
+  } else {
+    setTimeout(()=> alert(`時間切れ！塗った数: ${filled}/${TOTAL}\nスコア: ${score}`), 80);
+  }
+}
+
+function clearGrid(){
+  cells.forEach(cell => {
+    cell.dataset.filled = '0';
+    cell.classList.remove('filled');
+    cell.style.background = '';
+    const hint = cell.querySelector('.hint-dot');
+    if(hint) hint.style.opacity = '0.16';
+  });
+  score = 0; combo = 1; lastCorrectAt = 0;
+  filled = 0;
+  remainingTargets = TOTAL;
+  targetsLeftEl.textContent = remainingTargets;
+  running = false;
+  clearInterval(timer);
+  startBtn.textContent = 'Start';
+  timeLeft = GAME_TIME;
+  timerEl.textContent = timeLeft;
+  updateHUD();
+}
+
+// --- フラッシュ表示（上部） ---
+let flashTimeout = null;
+function showFlash(symbol, text){
+  flashEl.textContent = text;
+  flashEl.classList.add('show');
+  clearTimeout(flashTimeout);
+  flashTimeout = setTimeout(()=> flashEl.classList.remove('show'), 700);
+}
+
+// --- パレット描画 ---
+function renderPalette(){
+  paletteEl.innerHTML = '';
+  PALETTE.forEach((col, i) => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (col === selectedColor ? ' selected' : '');
+    sw.style.background = col;
+    sw.dataset.color = col;
+    sw.addEventListener('click', ()=> {
+      document.querySelectorAll('.swatch').forEach(s=> s.classList.remove('selected'));
+      sw.classList.add('selected');
+      selectedColor = col;
+      updateHUD();
+    });
+    paletteEl.appendChild(sw);
+  });
+  selectedColorBox.style.background = selectedColor;
+}
+
+// --- ヒント表示トグル ---
+let hintsVisible = true;
+function toggleHints(){
+  hintsVisible = !hintsVisible;
+  if(hintsVisible){
+    grid.classList.remove('no-hint');
+    toggleHint.textContent = 'Hide Hints';
+    // restore opacity
+    cells.forEach(c => {
+      const hint = c.querySelector('.hint-dot');
+      if(hint && c.dataset.filled === '0') hint.style.opacity = '0.16';
+    });
+  } else {
+    grid.classList.add('no-hint');
+    toggleHint.textContent = 'Show Hints';
+    cells.forEach(c => {
+      const hint = c.querySelector('.hint-dot');
+      if(hint) hint.style.opacity = '0';
+    });
+  }
+}
+
+// --- 勝利判定 ---
+function checkWin(){
+  if(remainingTargets <= 0){
+    endGame(true);
+  }
+}
+
+// --- イベント ---
+startBtn.addEventListener('click', startGame);
+clearBtn.addEventListener('click', clearGrid);
+toggleHint.addEventListener('click', toggleHints);
+window.addEventListener('pointerup', ()=> pointerDown = false);
+
+// 初期化
+renderPalette();
+createGrid();
+updateHUD();
+</script>
+</body>
+</html>
