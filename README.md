@@ -12,7 +12,7 @@
   https://zenn24ct.github.io/ink-nuri02/inkrush/
 
 - アップデート版  
-  https://zenn24ct.github.io/ink-nuri02/update/
+  https://zenn24ct.github.io/ink-nuri02/update01/
 
 - 今後追加予定  
     - さらにアップデート、改良したサイト
