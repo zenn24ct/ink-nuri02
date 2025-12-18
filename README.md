@@ -10,10 +10,11 @@
 
 - メイン版  
   [Color Match (Ink Rush)](https://zenn24ct.github.io/ink-nuri02/inkrush/)
+  ![Ink Rush](inkrush.png)
 
 - アップデート版  
   [Color Match Upgrade.ver CHROMA SNAP](https://zenn24ct.github.io/ink-nuri02/upgrade01/)
-  
+  ![Upgrade](upgrade.png)
 
 - 今後追加予定  
     - さらにアップデート、改良したサイト
