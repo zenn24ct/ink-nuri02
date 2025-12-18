@@ -9,11 +9,10 @@
 #### プレイリンク（GitHub Pages）
 
 - メイン版  
-  https://zenn24ct.github.io/ink-nuri02/inkrush/
   [Color Match (Ink Rush)](https://zenn24ct.github.io/ink-nuri02/inkrush/)
 
 - アップデート版  
-  [Color Match Update.ver](https://zenn24ct.github.io/ink-nuri02/update01/)
+  [Color Match Upgrade.ver CHROMA SNAP](https://zenn24ct.github.io/ink-nuri02/upgrade01/)
   
 
 - 今後追加予定  
