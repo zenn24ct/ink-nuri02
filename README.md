@@ -1,20 +1,12 @@
-了解。
-**GitHub Pages 前提・短く・箇条書き・リンク付き**の README を出します。
-URL は **あなたの GitHub Pages 構成にそのまま合わせられる形**にしています。
 
-そのまま `README.md` に貼って、`zenn24ct` 部分だけ確認してください。
-
----
-
-````markdown
-# Ink Nuri02 — Color Match
+### Ink Nuri02 — Color Match
 
 色指定パズル型の Web ミニゲーム。  
 指定された色を正確に塗り、制限時間内にスコアを稼ぐ。
 
 ---
 
-## プレイリンク（GitHub Pages）
+#### プレイリンク（GitHub Pages）
 
 - メイン版  
   https://zenn24ct.github.io/ink-nuri02/inkrush/
