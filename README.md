@@ -85,3 +85,7 @@ pointerdown / pointerover によるドラッグ塗り対応
 ✔ サウンド追加
 
 ✔ ハイスコア保存（localStorage）
+
+- やること
+- python3 -m http.server
+
